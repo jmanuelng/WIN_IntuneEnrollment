@@ -49,12 +49,13 @@ Function Test-AzureAdJoin {
     $dsreg = dsregcmd.exe /status
     if (($dsreg | Select-String "AzureAdJoined :") -match "YES") {
 
-        Write-Host "Device is AzureAd Joined"
+        Write-Host "Device is Azure AD Joined"
         Return $true
 
     }
     else {
 
+        Write-Warning "Device is not joined to Azure AD"
         Return $false
 
     }
@@ -299,6 +300,8 @@ Test-IsAdmin
 #Verify if device is AzureAD joined
 if ((Test-AzureAdJoin) -And (!(Test-IntuneEnrollment))) {
 
+    Write-Host "Device is Azure AD Join and does not have Intune service installed`n"
+    Write-Warning  "Executing Device Enrollment"
     #Write MDM enrollment URLs directly to registry
     $key = 'SYSTEM\CurrentControlSet\Control\CloudDomainJoin\TenantInfo\*'
     $keyinfo = Get-Item "HKLM:\$key"
