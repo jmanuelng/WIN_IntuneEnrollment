@@ -5,6 +5,9 @@
 
 .DESCRIPTION
     Script to help automatically enroll existing Windows devices (Hybrid or Azure AD joined) into Intune.
+
+    Verifies if device is Azure AD join, that has an Azure AD from same Tenant and that Intune services do not exist.
+    Configures MDM urls and execites Device Enrollment.
     
     Based on Rudy Ooms (tw:@Mister_MDM) blog: 
     https://call4cloud.nl/2020/05/intune-auto-mdm-enrollment-for-devices-already-azure-ad-joined/
@@ -16,12 +19,17 @@
     
     Added verifications:
         - Validate admin privilige
-        - Confirm AzureAd join
+        - Confirm device is AzureAd join
+        - Confirm existing user from same Tenant as device
         - Execute enrollment as system
 
     Function to execute as SYSTEM from Ondrej Sebela (tw:@AndrewZtrhgf), described in the following blog:
     https://doitpsway.com/fixing-hybrid-azure-ad-join-on-a-device-using-powershell
     Source: https://github.com/ztrhgf/useful_powershell_functions/blob/master/INTUNE/Reset-HybridADJoin.ps1
+
+    Other source:
+    https://nerdymishka.com/articles/azure-ad-domain-join-registry-keys/
+
 
 #>
 
@@ -31,7 +39,7 @@ Function Test-IsAdmin {
     If (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
 
         # Does not have Admin privileges
-        Write-Host "Script need to run with Administrative privileges"
+        Write-Warning "Script needs to run with Administrative privileges"
         Exit 9
 
     }
@@ -76,11 +84,66 @@ Function Test-IntuneEnrollment {
     if ($MDMService) {
         
         Write-Warning "Found Intune service on device"
-        Return $false
+        Return $true
     }
 
+    Write-Host "Intune service not found on device"
     Return $false
 
+}
+
+
+Function CheckForBusinessOrSchoolAccount {
+    <#
+    .DESCRIPTION
+    Looks for a AzureAD account. Queries Thumbrpint via dsregcmd then looks for the account details in registry.
+    Modified to return $true/$false and account details
+    .NOTES
+    Based on work from:
+    Michael Herndon: https://www.linkedin.com/in/nerdymishka/
+    as described here: https://nerdymishka.com/articles/azure-ad-domain-join-registry-keys/
+    Also inspired by:
+        strassenkater79: https://superuser.com/users/1754084/strassenkater79
+        Jos Lieben: https://www.linkedin.com/in/joslieben/
+    #>
+
+    $userEmail = ""
+    $fReturn = @{
+        exist = $false
+        accountname = ""
+    }
+
+    #Get Tenant info for device, if not found exit/terminate
+    $dsTenantId = (dsregcmd /status | Select-String "TenantId :" | out-string).split(':')[1].Trim()
+    if (($null -eq $dsTenantId) -or ($dsTenantId -eq "")) {
+        Write-Warning "Did not find Tenant ID for device"
+        Exit 1
+    }
+
+    # For the Tenant for which device is joined, go look for the related user e-mail
+    $subKey = Get-Item "HKLM:/SYSTEM/CurrentControlSet/Control/CloudDomainJoin/JoinInfo"
+
+        # Look for the user in all subkeys, pick the one that corresponds to the device Tenant
+    $guids = $subKey.GetSubKeyNames()
+    foreach($guid in $guids) {
+
+        $guidSubKey = $subKey.OpenSubKey($guid)
+        $tenantId = $guidSubKey.GetValue("TenantId")
+        
+        if ($tenantId -eq $dsTenantId) {
+
+            $userEmail = $guidSubKey.GetValue("UserEmail")
+            $fReturn.exist = $true
+            $fReturn.accountname = $userEmail
+
+            #If user found stop the for loop, no need for anything else.          
+            break
+        }
+
+    }
+
+    Return $fReturn
+ 
 }
 
 Function Invoke-AsSystem {
@@ -297,11 +360,21 @@ Function Invoke-AsSystem {
 #Verify admin priviliges
 Test-IsAdmin
 
-#Verify if device is AzureAD joined
-if ((Test-AzureAdJoin) -And (!(Test-IntuneEnrollment))) {
+#Confirm if there is an AzureAD account configured in device
+$AzAccount = CheckForBusinessOrSchoolAccount
+if ($AzAccount.exist) {
+    Write-Host "Found an existing account with the following Mail-Address: ""$($AzAccount.accountname)"""
+}
+else {
+    Write-Host "No AzureAD Business/School-Account found on device"
+}
 
-    Write-Host "Device is Azure AD Join and does not have Intune service installed`n"
+#Verify if device is AzureAD joined
+if ((Test-AzureAdJoin) -And (!(Test-IntuneEnrollment)) -And ($AzAccount.exist)) {
+
+    Write-Host "Device is Azure AD Join, has Azure AD account and does not have Intune service installed"
     Write-Warning  "Executing Device Enrollment"
+
     #Write MDM enrollment URLs directly to registry
     $key = 'SYSTEM\CurrentControlSet\Control\CloudDomainJoin\TenantInfo\*'
     $keyinfo = Get-Item "HKLM:\$key"
@@ -310,13 +383,13 @@ if ((Test-AzureAdJoin) -And (!(Test-IntuneEnrollment))) {
     $path = "HKLM:\SYSTEM\CurrentControlSet\Control\CloudDomainJoin\TenantInfo\$url"
 
     Write-Host "Writing MDM enrollment URLs directly to registry `n"
-#    New-ItemProperty -LiteralPath $path -Name 'MdmEnrollmentUrl' -Value 'https://enrollment.manage.microsoft.com/enrollmentserver/discovery.svc' -PropertyType String -Force -ErrorAction SilentlyContinue;
-#    New-ItemProperty -LiteralPath $path  -Name 'MdmTermsOfUseUrl' -Value 'https://portal.manage.microsoft.com/TermsofUse.aspx' -PropertyType String -Force -ErrorAction SilentlyContinue;
-#    New-ItemProperty -LiteralPath $path -Name 'MdmComplianceUrl' -Value 'https://portal.manage.microsoft.com/?portalAction=Compliance' -PropertyType String -Force -ErrorAction SilentlyContinue;
+    New-ItemProperty -LiteralPath $path -Name 'MdmEnrollmentUrl' -Value 'https://enrollment.manage.microsoft.com/enrollmentserver/discovery.svc' -PropertyType String -Force -ErrorAction SilentlyContinue | out-nul
+    New-ItemProperty -LiteralPath $path  -Name 'MdmTermsOfUseUrl' -Value 'https://portal.manage.microsoft.com/TermsofUse.aspx' -PropertyType String -Force -ErrorAction SilentlyContinue | out-nul
+    New-ItemProperty -LiteralPath $path -Name 'MdmComplianceUrl' -Value 'https://portal.manage.microsoft.com/?portalAction=Compliance' -PropertyType String -Force -ErrorAction SilentlyContinue | out-nul
 
     #Run Device Enrollment from System context
-#    $Script = "$env:SystemRoot\system32\deviceenroller.exe /c /AutoEnrollMDM"
-    $Script = "$env:SystemRoot\system32\ipconfig.exe /all"
+    $Script = "$env:SystemRoot\system32\deviceenroller.exe /c /AutoEnrollMDM"
+#    $Script = "$env:SystemRoot\system32\ipconfig.exe /all" #This is for testing
     $ScriptBlock = [scriptblock]::Create($Script)
 
     Write-Host "Executing $Script as SYSTEM..."
