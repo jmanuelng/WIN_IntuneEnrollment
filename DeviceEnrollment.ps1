@@ -1,4 +1,3 @@
-
 <#
 .SYNOPSIS
     Silently enroll a Windows device to Microsoft Intune.
