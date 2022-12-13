@@ -77,17 +77,38 @@ Function Test-IntuneEnrollment {
     Author: Ondrej Sebela
     #>
 
-    #Search for Intune Service
+    $Result = 1
 
+    #Look for MDMUrl
+    $mdmUrl = (dsregcmd /status | Select-String "MdmUrl :" | out-string) -Split("Url :")
+    $mdmUrl = $mdmUrl[1].Trim()
+
+    if (($null -eq $mdmUrl) -or ($mdmUrl -eq "")) {
+        Write-Host "No MDM URL found"
+        $Result = 1
+    }
+    else {
+        Write-Warning "Found MDM $mdmUrl"
+        $Result = 0
+    }
+
+    #Search for Intune Service
     $MDMService = Get-Service -Name IntuneManagementExtension -ErrorAction SilentlyContinue
     if ($MDMService) {
         
         Write-Warning "Found Intune service on device"
-        Return $true
+        $Result = 0
     }
 
-    Write-Host "Intune service not found on device"
-    Return $false
+    
+    if ($Result -eq 0) {
+        Return $true
+    }
+    else {
+        Write-Host "Intune service not found on device"
+        Return $false
+    }
+
 
 }
 
