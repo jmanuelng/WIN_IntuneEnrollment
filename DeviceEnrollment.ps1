@@ -417,7 +417,9 @@ Function Invoke-AsSystem {
 #Region Main
 
 #Verify admin priviliges
-#Test-IsAdmin
+Test-IsAdmin
+
+Write-Host "`n`n"
 
 # Find if currently logged on user has Azure AD Identity.
 $usrAAD = Confirm-AADuser
