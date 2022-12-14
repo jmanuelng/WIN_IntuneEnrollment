@@ -152,7 +152,7 @@ function Confirm-AADuser {
 }
 
 
-Function WhoJoinedDevice {
+Function Confirm-WhoJoinedDevice {
     <#
     .DESCRIPTION
     Looks for a AzureAD account. Queries Thumbrpint via dsregcmd then looks for the account details in registry.
@@ -195,7 +195,7 @@ Function WhoJoinedDevice {
             $fReturn.exist = $true
             $fReturn.accountname = $userEmail
 
-            #If user found stop the for loop, no need for anything else.          
+            #If user found stop the foreach loop, no need for anything else.          
             break
         }
 
@@ -203,6 +203,47 @@ Function WhoJoinedDevice {
 
     Return $fReturn
  
+}
+
+Function Confirm-EnrolledUsrAAD {
+    param ()
+
+    $fReturn = @{
+        exist = $false
+        Upn = ""
+    }
+
+    # Get Tenant info for device, if not found exit/terminate
+    $dsTenantId = (dsregcmd /status | Select-String "TenantId :" | out-string).split(':')[1].Trim()
+    if (($null -eq $dsTenantId) -or ($dsTenantId -eq "")) {
+        Write-Warning "Did not find Tenant ID for device"
+        Exit 1
+    }
+
+    # For the Tenant for which device is joined, go look for the related user e-mail
+    $subKey = Get-Item "HKLM:\SOFTWARE\Microsoft\Enrollments"
+
+    #    Look for the user AAD TenantID in all subkeys, pick the one that corresponds to the device Tenant
+    $guids = $subKey.GetSubKeyNames()
+    foreach($guid in $guids) {
+
+        $guidSubKey = $subKey.OpenSubKey($guid)
+        $tenantId = $guidSubKey.GetValue("AADTenantID")
+        
+        if ($tenantId -eq $dsTenantId) {
+
+            $usrUpn = $guidSubKey.GetValue("UPN")
+            $fReturn.exist = $true
+            $fReturn.Upn = $usrUpn
+
+            #If user found stop the foreach loop, no need for anything else.          
+            break
+        }
+
+    }
+
+    Return $fReturn
+    
 }
 
 Function Invoke-AsSystem {
@@ -416,23 +457,13 @@ Function Invoke-AsSystem {
 
 #Region Main
 
-#Verify admin priviliges
-Test-IsAdmin
-
 Write-Host "`n`n"
 
-# Find if currently logged on user has Azure AD Identity.
-$usrAAD = Confirm-AADuser
-if ($usrAAD.exist) {
-    Write-Host "Found Azure AD identity for Logged user: ""$($usrAAD.username)"""
-}
-else {
-    Write-Warning "No Azure AD identity found Logged on user."
-}
-
+#Verify admin priviliges
+#Test-IsAdmin
 
 # Confirm if there is informaion of AzureAD that joined device to Azure AD Domain.
-$usrJoinedDevice = WhoJoinedDevice
+$usrJoinedDevice =Confirm-WhoJoinedDevice
 if ($usrJoinedDevice.exist) {
     Write-Host "Device joined to Azure AD by: ""$($usrJoinedDevice.accountname)"""
 }
@@ -440,10 +471,28 @@ else {
     Write-Warning "No Azure AD account found for device join."
 }
 
+# Find if currently logged on user has Azure AD Identity.
+$usrAAD = Confirm-AADuser
+if ($usrAAD.exist) {
+    Write-Host "Found Azure AD identity for Logged user: ""$($usrAAD.username)""."
+}
+else {
+    Write-Warning "No Azure AD logged on user found."
+}
+
+# Find if there is a connected Azure AD Account (Work or school acccount?) registered on the device.
+$usrEnrolledAAD = Confirm-EnrolledUsrAAD
+if ($usrEnrolledAAD.exist) {
+    Write-Host "Found Enrolled user on device: ""$($usrEnrolledAAD.Upn)""."
+}
+else {
+    Write-Warning "No Azure AD Enrolled user on device."
+}
+
 
 # Verify if device is AzureAD joined
 #       -And ($usrAAD.exist) -And ($usrJoinedDevice.exist)
-if ((Test-AzureAdJoin) -And (!(Test-IntuneEnrollment))) {
+if ((Test-AzureAdJoin) -and (!(Test-IntuneEnrollment)) -and (($usrAAD.exist) -or ($usrEnrolledAAD.exist))) {
 
     Write-Host "Device is Azure AD Join, has Azure AD account and does not have Intune service installed"
     Write-Warning  "Executing Device Enrollment"
