@@ -112,8 +112,47 @@ Function Test-IntuneEnrollment {
 
 }
 
+function Confirm-AADuser {
+    param ()
 
-Function CheckForBusinessOrSchoolAccount {
+    $fReturn = @{
+        exist = $false
+        username = ""
+    }
+    
+    # Find the currently logged-on user on device.
+    #   Get SID for logged-on user
+
+    $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI"
+    $regValue = "SelectedUserSID"
+    
+    try {
+        $usrSID = Get-ItemPropertyValue -Path $regPath -Name $regValue  -ErrorAction Stop
+    }
+    catch {
+        # SID for logged-on user not found, bye
+        $fReturn.username = $null
+        Return $fReturn
+    }
+
+    #   Get username 
+    $basePath = "HKLM:\SOFTWARE\Microsoft\IdentityStore\Cache\$usrSID\IdentityCache\$usrSID"
+    
+    try {
+        $userId = (Get-ItemProperty -Path $basePath -Name UserName -ErrorAction Stop).UserName
+        $fReturn.username = $userId
+        $fReturn.exist = $true
+    }
+    catch {
+        # No username found
+    }
+    
+    Return $fReturn
+
+}
+
+
+Function WhoJoinedDevice {
     <#
     .DESCRIPTION
     Looks for a AzureAD account. Queries Thumbrpint via dsregcmd then looks for the account details in registry.
@@ -141,9 +180,9 @@ Function CheckForBusinessOrSchoolAccount {
     }
 
     # For the Tenant for which device is joined, go look for the related user e-mail
-    $subKey = Get-Item "HKLM:/SYSTEM/CurrentControlSet/Control/CloudDomainJoin/JoinInfo"
+    $subKey = Get-Item "HKLM:\SYSTEM\CurrentControlSet\Control\CloudDomainJoin\JoinInfo"
 
-        # Look for the user in all subkeys, pick the one that corresponds to the device Tenant
+    #    Look for the user in all subkeys, pick the one that corresponds to the device Tenant
     $guids = $subKey.GetSubKeyNames()
     foreach($guid in $guids) {
 
@@ -378,19 +417,32 @@ Function Invoke-AsSystem {
 #Region Main
 
 #Verify admin priviliges
-Test-IsAdmin
+#Test-IsAdmin
 
-#Confirm if there is an AzureAD account configured in device
-$AzAccount = CheckForBusinessOrSchoolAccount
-if ($AzAccount.exist) {
-    Write-Host "Found an existing account with the following Mail-Address: ""$($AzAccount.accountname)"""
+# Find if currently logged on user has Azure AD Identity.
+$usrAAD = Confirm-AADuser
+if ($usrAAD.exist) {
+    Write-Host "Found Azure AD identity for Logged user: ""$($usrAAD.username)"""
 }
 else {
-    Write-Host "No AzureAD Business/School-Account found on device"
+    Write-Warning "No Azure AD identity found Logged on user."
 }
 
-#Verify if device is AzureAD joined
-if ((Test-AzureAdJoin) -And (!(Test-IntuneEnrollment)) -And ($AzAccount.exist)) {
+
+# Confirm if there is informaion of AzureAD that joined device to Azure AD Domain.
+$usrJoinedDevice = WhoJoinedDevice
+if ($usrJoinedDevice.exist) {
+    Write-Host "Device joined to Azure AD by: ""$($usrJoinedDevice.accountname)"""
+}
+else {
+    Write-Warning "No Azure AD account found for device join."
+}
+
+Write-Host "Stop!!"
+
+# Verify if device is AzureAD joined
+#       -And ($usrAAD.exist) -And ($usrJoinedDevice.exist)
+if ((Test-AzureAdJoin) -And (!(Test-IntuneEnrollment))) {
 
     Write-Host "Device is Azure AD Join, has Azure AD account and does not have Intune service installed"
     Write-Warning  "Executing Device Enrollment"
@@ -401,15 +453,19 @@ if ((Test-AzureAdJoin) -And (!(Test-IntuneEnrollment)) -And ($AzAccount.exist)) 
     $url = $keyinfo.name
     $url = $url.Split("\")[-1]
     $path = "HKLM:\SYSTEM\CurrentControlSet\Control\CloudDomainJoin\TenantInfo\$url"
+    $mdmUrl = "https://enrollment.manage.microsoft.com/enrollmentserver/discovery.svc"
+    $mdmTocUrl = "https://portal.manage.microsoft.com/TermsofUse.aspx"
+    $mdmCUrl = "https://portal.manage.microsoft.com/?portalAction=Compliance"
+
 
     Write-Host "Writing MDM enrollment URLs directly to registry `n"
-    New-ItemProperty -LiteralPath $path -Name 'MdmEnrollmentUrl' -Value 'https://enrollment.manage.microsoft.com/enrollmentserver/discovery.svc' -PropertyType String -Force -ErrorAction SilentlyContinue | out-null
-    New-ItemProperty -LiteralPath $path  -Name 'MdmTermsOfUseUrl' -Value 'https://portal.manage.microsoft.com/TermsofUse.aspx' -PropertyType String -Force -ErrorAction SilentlyContinue | out-null
-    New-ItemProperty -LiteralPath $path -Name 'MdmComplianceUrl' -Value 'https://portal.manage.microsoft.com/?portalAction=Compliance' -PropertyType String -Force -ErrorAction SilentlyContinue | out-null
+    New-ItemProperty -LiteralPath $path -Name 'MdmEnrollmentUrl' -Value $mdmUrl -PropertyType String -Force -ErrorAction SilentlyContinue | out-null
+    New-ItemProperty -LiteralPath $path  -Name 'MdmTermsOfUseUrl' -Value $mdmTocUrl -PropertyType String -Force -ErrorAction SilentlyContinue | out-null
+    New-ItemProperty -LiteralPath $path -Name 'MdmComplianceUrl' -Value $mdmCUrl -PropertyType String -Force -ErrorAction SilentlyContinue | out-null
 
     #Run Device Enrollment from System context
     $Script = "$env:SystemRoot\system32\deviceenroller.exe /c /AutoEnrollMDM"
-#    $Script = "$env:SystemRoot\system32\ipconfig.exe /all" #This is for testing
+#    $Script = "$env:SystemRoot\system32\ipconfig.exe /all" # This is for testing SYSTEM context
     $ScriptBlock = [scriptblock]::Create($Script)
 
     Write-Host "Executing $Script as SYSTEM..."
