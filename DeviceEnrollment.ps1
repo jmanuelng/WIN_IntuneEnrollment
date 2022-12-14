@@ -438,7 +438,6 @@ else {
     Write-Warning "No Azure AD account found for device join."
 }
 
-Write-Host "Stop!!"
 
 # Verify if device is AzureAD joined
 #       -And ($usrAAD.exist) -And ($usrJoinedDevice.exist)
