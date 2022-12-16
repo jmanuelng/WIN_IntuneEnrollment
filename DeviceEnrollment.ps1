@@ -112,7 +112,7 @@ Function Test-IntuneEnrollment {
 
 }
 
-function Confirm-AADuser {
+Function Confirm-AADuser {
     param ()
 
     $fReturn = @{
@@ -205,7 +205,7 @@ Function Confirm-WhoJoinedDevice {
  
 }
 
-Function Confirm-EnrolledUsrAAD {
+Function Confirm-EnrolledUsr {
     param ()
 
     $fReturn = @{
@@ -244,6 +244,227 @@ Function Confirm-EnrolledUsrAAD {
 
     Return $fReturn
     
+}
+
+function Convert-HexToString {
+        <#
+    .DESCRIPTION
+    Converts Hex data to String 
+    .NOTES
+    Based on work from:
+    François-Xavier Cat: https://twitter.com/lazywinadmin
+    as described here: https://lazywinadmin.com/2015/08/powershell-remove-special-characters.html#unicode-specific-code-point
+    #>
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$hexString
+    )
+
+    # Convert data to string and clean it up
+    $asciiChars = $hexString -split ',' | ForEach-Object {[char][byte]"0x$_"}
+    $asciiString = $asciiChars -join ''
+    $asciiString = $asciiString -replace " ",""
+    $asciiString = $asciiString -replace '[^a-z0-9/@.-]', ''
+
+    Return $asciiString
+    
+}
+
+Function Read-SettingsDat {
+    <#
+    .DESCRIPTION
+    Looks for a configurd Work or School account. Reads info from Settings.Dat file by importing it to Registry, then looks for TenantId, if found gets the UPN.
+    .NOTES
+    Based on work from:
+    Damir Arh: https://twitter.com/DamirArh/
+    as described here: https://www.damirscorner.com/blog/posts/20150117-ManipulatingSettingsDatFileWithSettingsFromWindowsStoreApps.html
+    #>
+
+    $fReturn = @{
+        exist = $false
+        Upn = ""
+    }
+
+    function Read-SettingsFromFile {
+        param (
+            [Parameter(Mandatory)]
+            [string]$filePath,
+            [Parameter(Mandatory)]
+            [string]$txtValue
+        )
+
+        $Data = @{}
+        $fileContents = Get-Content $filePath
+        $processing = $false
+
+        Foreach ($line in $fileContents) {
+
+            If (-not($processing))
+            {
+                # scanning for first line of the value
+                If ($line.StartsWith($txtValue))
+                {
+                    # found - switch mode and start reading 
+                    $processing = $true
+                    $txtValue = $line.Replace($txtValue, "")
+                }
+            }
+            Else
+            {
+                # non-first lines have leading spaces
+                $txtValue += $line.TrimStart(" ")
+            }
+
+            If ($processing)
+            {
+                # scanning for last line of the value
+                If ($txtValue.EndsWith("\"))
+                {
+                    # strip trailing backslash; the value continues
+                    $txtValue = $txtValue.TrimEnd("\")
+                }
+                Else
+                {
+                    # no backslash; the value is complete
+                    
+                    # extract type and timestamp from old value
+                    $match = $txtValue -match "(.*:)(.*)"
+                    $hexValue = $matches[2]
+                    $valueType = $matches[1]
+                    $timestamp = $matches[2].Substring($matches[2].Length - 23)
+            
+                    $Data = @{
+                        hexValue = $hexValue
+                        valueType = $valueType
+                        timeStamo = $timestamp
+                    }
+                    $processing = $false
+
+                    # Found what we are looking for, stop
+                    Break
+                }
+            }
+        }
+
+        Return $Data
+        
+    }
+
+    function Confirm-UsrSID {
+        param ()
+
+        # Find the currently logged-on user on device.
+        #   Get SID for logged-on user
+
+        $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI"
+        $regValue = "SelectedUserSID"
+        
+        try {
+            $usrSID = Get-ItemPropertyValue -Path $regPath -Name $regValue  -ErrorAction Stop
+        }
+        catch {
+            # SID for logged-on user not found, bye
+            Return = $null
+        }
+
+        Return $usrSID
+        
+    }
+
+    $usrSID = Confirm-UsrSID
+    $localDataPath = Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$usrSID" -Name "ProfileImagePath"
+    $PackageName = "Microsoft.AAD.BrokerPlugin_cw5n1h2txyewy"
+    $SettingsPath = "Settings\Settings.dat" # Change to "Settings\settings.dat" after done testing
+    $SettingsBackup  = "Settings\backup.dat"
+	$settingsFile = "$localDataPath\AppData\Local\Packages\$PackageName\$SettingsPath"
+    $settingsBackupFile = "$localDataPath\AppData\Local\Packages\$PackageName\$SettingsBackup"
+    $tempPath = "$localDataPath\AppData\Local\Temp"
+
+    $dsTenantId = (dsregcmd /status | Select-String "TenantId :" | out-string).split(':')[1].Trim()
+
+	# temporary paths
+	$regFile = "$tempPath\Settings_$((Get-Date -format yyyyMMddhhmmtt).ToString()).reg"  #Temporary reg file
+	$registryImportLocation = "HKLM\_TMP"
+	$regPath = "HKLM:\_TMP"
+
+    if (Test-Path $settingsFile) {
+
+        try {
+            Copy-Item $settingsFile -Destination $settingsBackupFile -Force -ErrorAction Stop
+        }
+        catch {
+            Return $fReturn
+        }
+        
+    
+    }
+
+	reg load $registryImportLocation $settingsBackupFile
+	
+    # For the Tenant for which device is joined, find a connecte Work or School account (AAD account)
+    try {
+
+        $subKey = Get-Item "$regPath\LocalState\SSOUsers" -ErrorAction Stop
+        $subKeyName = $subKey.Name    
+        
+        $guids = $subKey.GetSubKeyNames()
+
+        if (($null -eq $guids.Count) -or ($guids.Count -eq 0)) {
+            $subKey = $null
+            [System.GC]::GetTotalMemory($true) | Out-Null # Cleanup! Need it to be able to Unload Hive. Credit: https://www.jhouseconsulting.com/2017/09/25/addressing-the-powershell-garbage-collection-bug-1825
+            reg unload $registryImportLocation
+            Return $fReturn
+        }
+
+    }
+    catch {
+        $subKey = $null
+        [System.GC]::GetTotalMemory($true) | Out-Null
+        reg unload $registryImportLocation
+        Return $fReturn
+    }
+
+    Remove-Variable -Name "subKey"
+    [System.GC]::GetTotalMemory($true) | Out-Null
+    reg unload $registryImportLocation
+ 
+    foreach($guid in $guids) {
+
+        #$guidSubKey = $subKey.OpenSubKey($guid)
+
+        reg export "$subKeyName\$guid" $regFile
+
+        $valueTenantId = """TenantId""="
+        $valueUpn = """UPN""="
+        
+        $datTenantId = Read-SettingsFromFile $regFile $valueTenantId
+        $tenantId = Convert-HexToString $($datTenantId.hexValue)
+
+        Write-Host "Tenand ID: " $tenantId
+
+        # See if there Tenant is a match
+        if ($tenantId -eq $dsTenantId) {
+
+            # Found TenantID match, get the UPN
+            $datUPN = Read-SettingsFromFile $regFile $valueUpn
+            $usrUpn = Convert-HexToString $($datUpn.hexValue)
+            
+            $fReturn.exist = $true
+            $fReturn.Upn = $usrUpn
+
+            #If user found stop the foreach loop, no need for anything else.          
+            break
+        }
+
+    }
+
+    # Delete temp Settings Reg File
+    if (Test-Path $regFile) {
+        Remove-Item $regFile
+      }
+
+    Return $fReturn
+
 }
 
 Function Invoke-AsSystem {
@@ -460,39 +681,48 @@ Function Invoke-AsSystem {
 Write-Host "`n`n"
 
 #Verify admin priviliges
-#Test-IsAdmin
+Test-IsAdmin
 
 # Confirm if there is informaion of AzureAD that joined device to Azure AD Domain.
-$usrJoinedDevice =Confirm-WhoJoinedDevice
+$usrJoinedDevice = Confirm-WhoJoinedDevice
+
+# Find if currently logged on user has Azure AD Identity.
+$usrAAD = Confirm-AADuser
+
+# Find if there is a connected Azure AD Account (Work or school acccount?) registered on the device.
+$usrWS = Read-SettingsDat
+
+# Get info of Intune Enrolled user
+#$usrEnrolled = Confirm-EnrolledUsr   # Might be worth it tryinf to get this user at the end for Enrollment.
+
+
 if ($usrJoinedDevice.exist) {
     Write-Host "Device joined to Azure AD by: ""$($usrJoinedDevice.accountname)"""
 }
 else {
-    Write-Warning "No Azure AD account found for device join."
+    Write-Host "No Azure AD account found for device join."
 }
 
-# Find if currently logged on user has Azure AD Identity.
-$usrAAD = Confirm-AADuser
+
 if ($usrAAD.exist) {
     Write-Host "Found Azure AD identity for Logged user: ""$($usrAAD.username)""."
 }
 else {
-    Write-Warning "No Azure AD logged on user found."
+    Write-Host "No Azure AD identity found for logged on user."
 }
 
-# Find if there is a connected Azure AD Account (Work or school acccount?) registered on the device.
-$usrEnrolledAAD = Confirm-EnrolledUsrAAD
-if ($usrEnrolledAAD.exist) {
-    Write-Host "Found Enrolled user on device: ""$($usrEnrolledAAD.Upn)""."
+
+if ($usrWS.exist) {
+    Write-Host "Found Work or School (Azure AD) Account registered on device: ""$($usrWS.Upn)""."
 }
 else {
-    Write-Warning "No Azure AD Enrolled user on device."
+    Write-Host "Did not find a Work or School account on device."
 }
 
 
 # Verify if device is AzureAD joined
 #       -And ($usrAAD.exist) -And ($usrJoinedDevice.exist)
-if ((Test-AzureAdJoin) -and (!(Test-IntuneEnrollment)) -and (($usrAAD.exist) -or ($usrEnrolledAAD.exist))) {
+if ((Test-AzureAdJoin) -and (!(Test-IntuneEnrollment)) -and (($usrAAD.exist) -or ($usrWS.exist))) {
 
     Write-Host "Device is Azure AD Join, has Azure AD account and does not have Intune service installed"
     Write-Warning  "Executing Device Enrollment"
@@ -528,5 +758,9 @@ if ((Test-AzureAdJoin) -and (!(Test-IntuneEnrollment)) -and (($usrAAD.exist) -or
 else {
     Write-Host "Device already enrolled to Intune"
 }
+
+
+
+Write-Host "`n`n"
 
 #Endregion Main
