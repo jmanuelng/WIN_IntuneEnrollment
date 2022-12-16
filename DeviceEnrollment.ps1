@@ -307,6 +307,8 @@ Function Read-SettingsDat {
             timeStamo = $null
         }
 
+        $Result = 0
+
         if (Test-Path -Path $filePath) {
             $fileContents = Get-Content $filePath
         }
@@ -404,7 +406,7 @@ Function Read-SettingsDat {
 
 	# temporary paths
 	#$regFile = "$tempPath\Settings_$((Get-Date -format yyyyMMddhhmmtt).ToString()).reg"  #Temporary reg file
-	$regFile = "C:\Temp\Settings_$((Get-Date -format yyyyMMddhhmmtt).ToString()).reg"
+	$regFile = "$tempPath\Settings_$((Get-Date -format yyyyMMddhhmmtt).ToString()).reg"
     $registryImportLocation = "HKLM\_TMP"
 	$regPath = "HKLM:\_TMP"
 
@@ -422,6 +424,7 @@ Function Read-SettingsDat {
     }
 
 	$null = reg load $registryImportLocation $settingsBackupFile
+
 	
     # For the Tenant for which device is joined, find a connected Work or School account (AAD account)
     try {
@@ -431,17 +434,26 @@ Function Read-SettingsDat {
         $guids = $subKey.GetSubKeyNames()
 
         if (($null -eq $guids.Count) -or ($guids.Count -eq 0)) {
-            $subKey = $null
-            [System.GC]::GetTotalMemory($true) | Out-Null # Cleanup! Need it to be able to Unload Hive. Credit: https://www.jhouseconsulting.com/2017/09/25/addressing-the-powershell-garbage-collection-bug-1825
-            reg unload $registryImportLocation
-            Return $fReturn
+           $result = 1
         }
 
     }
     catch {
+        $result = 1
+    }
+
+    if ($result -eq 1) {
+        # Something failed. Cleanup and return.
+
         $subKey = $null
         [System.GC]::GetTotalMemory($true) | Out-Null
         reg unload $registryImportLocation
+
+        # Delete DAT backup file
+        if (Test-Path $settingsBackupFile) {
+            Remove-Item $settingsBackupFile -Force
+        }
+
         Return $fReturn
     }
 
@@ -457,7 +469,7 @@ Function Read-SettingsDat {
 
         if ((!($null -eq $datTenantId.hexValue)) -or ($datTenantId.hexValue -eq "")) {
             $tenantId = Convert-HexToString $($datTenantId.hexValue)
-            Write-Host "Tenand ID: " $tenantId
+            Write-Host "Tenand ID (WS): " $tenantId
         }
         else {
             Return $fReturn
@@ -480,18 +492,28 @@ Function Read-SettingsDat {
 
     }
 
+    function Cleanup {
+        param ()
+        
+    }
+
     Remove-Variable -Name "subKey"
     [System.GC]::GetTotalMemory($true) | Out-Null
     reg unload $registryImportLocation
 
     # Delete temp Settings Reg File
     if (Test-Path $regFile) {
-        Remove-Item $regFile
-      }
+        Remove-Item $regFile -Force
+    }
+
 
     Return $fReturn
 
 }
+
+
+
+
 
 Function Invoke-AsSystem {
     <#
