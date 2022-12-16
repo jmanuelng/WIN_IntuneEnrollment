@@ -506,6 +506,10 @@ Function Read-SettingsDat {
         Remove-Item $regFile -Force
     }
 
+    # Delete DAT backup file
+    if (Test-Path $settingsBackupFile) {
+        Remove-Item $settingsBackupFile -Force
+    }
 
     Return $fReturn
 
