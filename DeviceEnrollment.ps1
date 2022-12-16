@@ -48,7 +48,7 @@ Function Test-IsAdmin {
     else {
 
         #Has Admin rights
-        Write-Host "Adminitrator rights have been confirmed"
+        Write-Host "Administrator rights have been confirmed"
     
     }
     
@@ -183,7 +183,12 @@ Function Confirm-WhoJoinedDevice {
     }
 
     # For the Tenant for which device is joined, go look for the related user e-mail
-    $subKey = Get-Item "HKLM:\SYSTEM\CurrentControlSet\Control\CloudDomainJoin\JoinInfo"
+    try {
+        $subKey = Get-Item "HKLM:\SYSTEM\CurrentControlSet\Control\CloudDomainJoin\JoinInfo" -ErrorAction Stop
+    }
+    catch {
+        Return $fReturn
+    }
 
     #    Look for the user in all subkeys, pick the one that corresponds to the device Tenant
     $guids = $subKey.GetSubKeyNames()
@@ -296,8 +301,20 @@ Function Read-SettingsDat {
             [string]$txtValue
         )
 
-        $Data = @{}
-        $fileContents = Get-Content $filePath
+        $Data = @{
+            hexValue = $null
+            valueType = $null
+            timeStamo = $null
+        }
+
+        if (Test-Path -Path $filePath) {
+            $fileContents = Get-Content $filePath
+        }
+        else {
+            Write-Warning "Work School registry file not found. **$filePath"
+            Return $Data
+        }
+
         $processing = $false
 
         Foreach ($line in $fileContents) {
@@ -386,8 +403,9 @@ Function Read-SettingsDat {
     $dsTenantId = (dsregcmd /status | Select-String "TenantId :" | out-string).split(':')[1].Trim()
 
 	# temporary paths
-	$regFile = "$tempPath\Settings_$((Get-Date -format yyyyMMddhhmmtt).ToString()).reg"  #Temporary reg file
-	$registryImportLocation = "HKLM\_TMP"
+	#$regFile = "$tempPath\Settings_$((Get-Date -format yyyyMMddhhmmtt).ToString()).reg"  #Temporary reg file
+	$regFile = "C:\Temp\Settings_$((Get-Date -format yyyyMMddhhmmtt).ToString()).reg"
+    $registryImportLocation = "HKLM\_TMP"
 	$regPath = "HKLM:\_TMP"
 
     if (Test-Path $settingsFile) {
@@ -396,20 +414,20 @@ Function Read-SettingsDat {
             Copy-Item $settingsFile -Destination $settingsBackupFile -Force -ErrorAction Stop
         }
         catch {
+            Write-Warning "Unable to read Work or School DAT Settings"
             Return $fReturn
         }
         
     
     }
 
-	reg load $registryImportLocation $settingsBackupFile
+	$null = reg load $registryImportLocation $settingsBackupFile
 	
-    # For the Tenant for which device is joined, find a connecte Work or School account (AAD account)
+    # For the Tenant for which device is joined, find a connected Work or School account (AAD account)
     try {
 
         $subKey = Get-Item "$regPath\LocalState\SSOUsers" -ErrorAction Stop
         $subKeyName = $subKey.Name    
-        
         $guids = $subKey.GetSubKeyNames()
 
         if (($null -eq $guids.Count) -or ($guids.Count -eq 0)) {
@@ -427,23 +445,24 @@ Function Read-SettingsDat {
         Return $fReturn
     }
 
-    Remove-Variable -Name "subKey"
-    [System.GC]::GetTotalMemory($true) | Out-Null
-    reg unload $registryImportLocation
  
     foreach($guid in $guids) {
 
-        #$guidSubKey = $subKey.OpenSubKey($guid)
-
-        reg export "$subKeyName\$guid" $regFile
+        $null = reg export "$subKeyName\$guid" $regFile
 
         $valueTenantId = """TenantId""="
         $valueUpn = """UPN""="
         
         $datTenantId = Read-SettingsFromFile $regFile $valueTenantId
-        $tenantId = Convert-HexToString $($datTenantId.hexValue)
 
-        Write-Host "Tenand ID: " $tenantId
+        if ((!($null -eq $datTenantId.hexValue)) -or ($datTenantId.hexValue -eq "")) {
+            $tenantId = Convert-HexToString $($datTenantId.hexValue)
+            Write-Host "Tenand ID: " $tenantId
+        }
+        else {
+            Return $fReturn
+        }
+        
 
         # See if there Tenant is a match
         if ($tenantId -eq $dsTenantId) {
@@ -460,6 +479,10 @@ Function Read-SettingsDat {
         }
 
     }
+
+    Remove-Variable -Name "subKey"
+    [System.GC]::GetTotalMemory($true) | Out-Null
+    reg unload $registryImportLocation
 
     # Delete temp Settings Reg File
     if (Test-Path $regFile) {
@@ -719,7 +742,7 @@ if ($usrWS.exist) {
     Write-Host "Found Work or School (Azure AD) Account registered on device: ""$($usrWS.Upn)""."
 }
 else {
-    Write-Host "Did not find a Work or School account on device."
+    Write-Host "No Work or School account found on device."
 }
 
 
