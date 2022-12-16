@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Silently enroll a Windows device to Microsoft Intune.
+    Silently enroll a Windows device to Microsoft Intune if already joined to Azure AD and has an AAD user account.
 
 .DESCRIPTION
     Script to help automatically enroll existing Windows devices (Hybrid or Azure AD joined) into Intune.
 
-    Verifies if device is Azure AD join, that has an Azure AD from same Tenant and that Intune services do not exist.
+    Verifies if device is Azure AD join, that has an Azure AD from same Tenant and verifies that Intune services do not exist.
     Configures MDM urls and execites Device Enrollment.
     
     Based on Rudy Ooms (tw:@Mister_MDM) blog: 
@@ -28,6 +28,9 @@
 
     Other source:
     https://nerdymishka.com/articles/azure-ad-domain-join-registry-keys/
+
+    To do:
+    - At end verify that Device correctly received Intune Certificate.
 
 
 #>
