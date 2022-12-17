@@ -15,7 +15,13 @@
 </ul>
 
 
-<p>Function to execute as SYSTEM from Ondrej Sebela (<a href="https://twitter.com/AndrewZtrhgf">@AndrewZtrhgf</a>), described in the following blog: <a href="https://doitpsway.com/fixing-hybrid-azure-ad-join-on-a-device-using-powershell">https://doitpsway.com/fixing-hybrid-azure-ad-join-on-a-device-using-powershell</a> Source: <a href="https://github.com/ztrhgf/useful_powershell_functions/blob/master/INTUNE/Reset-HybridADJoin.ps1">https://github.com/ztrhgf/useful_powershell_functions/blob/master/INTUNE/Reset-HybridADJoin.ps1</a></p>
+<p>Function to execute as SYSTEM from Ondrej Sebela (<a href="https://twitter.com/AndrewZtrhgf">@AndrewZtrhgf</a>).
+<ul>
+<li>Blog: <a href="https://doitpsway.com/fixing-hybrid-azure-ad-join-on-a-device-using-powershell">https://doitpsway.com/fixing-hybrid-azure-ad-join-on-a-device-using-powershell</a> .</li>
+<li>Source: <a href="https://github.com/ztrhgf/useful_powershell_functions/blob/master/INTUNE/Reset-HybridADJoin.ps1">https://github.com/ztrhgf/useful_powershell_functions/blob/master/INTUNE/Reset-HybridADJoin.ps1</a>.</li>
+</ul>
+
+</p>
 <p>Other source: <a href="https://nerdymishka.com/articles/azure-ad-domain-join-registry-keys/ ">https://nerdymishka.com/articles/azure-ad-domain-join-registry-keys/</a></p>
 <p>More sources mentioned in code.</p>
 
@@ -24,3 +30,6 @@
 <ul>
 <li>At end verify that Device correctly received Intune Certificate.</li>
 </ul>
+
+
+
