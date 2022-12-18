@@ -492,10 +492,6 @@ Function Read-SettingsDat {
 
     }
 
-    function Cleanup {
-        param ()
-        
-    }
 
     Remove-Variable -Name "subKey"
     [System.GC]::GetTotalMemory($true) | Out-Null
@@ -686,9 +682,9 @@ Function Invoke-AsSystem {
             # wait for sched. task to end
             Write-Verbose "waiting on sched. task end ..."
             $i = 0
-            while (((Get-ScheduledTask $taskName -ErrorAction silentlyContinue).state -ne "Ready") -and $i -lt 500) {
+            while (((Get-ScheduledTask $taskName -ErrorAction silentlyContinue).state -ne "Ready") -and $i -lt 1000) {
                 ++$i
-                Start-Sleep -Milliseconds 200
+                Start-Sleep -Milliseconds 500
             }
 
             # get sched. task result code
