@@ -19,6 +19,23 @@
 
 #Region Functions
 
+Function Test-IsAdmin {
+
+    If (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+
+        # Does not have Admin privileges
+        Return $false
+
+    }
+    else {
+
+        #Has Admin rights
+        Return $true
+    
+    }
+    
+}
+
 function Convert-HexToString {
     <#
 .DESCRIPTION
@@ -420,40 +437,49 @@ Function Read-SettingsDat {
 
 #Region Main
 
-# Confirm if there is informaion of AzureAD that joined device to Azure AD Domain.
-$usrJoinedDevice = Confirm-WhoJoinedDevice
-
-# Find if currently logged on user has Azure AD Identity.
-$usrAAD = Confirm-AADuser
-
-# Find if there is a connected Azure AD Account (Work or school acccount?) registered on the device.
-$usrWS = Read-SettingsDat
-
 Write-Host "`n`n"
-Write-Host "Account information found for device: `n"
 
-Write-Host "Device Azure AD joined by: " -NoNewline
-if ($usrJoinedDevice.exist) {
-     Write-Host """$($usrJoinedDevice.accountname)""."
+if (Test-IsAdmin) {         # Part of the code require Admin privileges.
+
+    # Confirm if there is informaion of AzureAD that joined device to Azure AD Domain.
+    $usrJoinedDevice = Confirm-WhoJoinedDevice
+
+    # Find if currently logged on user has Azure AD Identity.
+    $usrAAD = Confirm-AADuser
+
+    # Find if there is a connected Azure AD Account (Work or school acccount?) registered on the device.
+    $usrWS = Read-SettingsDat
+
+
+    Write-Host "Account information found for device: `n" -ForegroundColor Yellow
+
+    Write-Host "Device Azure AD joined by`t: " -NoNewline -ForegroundColor Green
+    if ($usrJoinedDevice.exist) {
+        Write-Host """$($usrJoinedDevice.accountname)""."
+    }
+    else {
+        Write-Host "Not found."
+    }
+
+    Write-Host "Logged on user AAD identity`t: " -NoNewline -ForegroundColor Green
+    if ($usrAAD.exist) {
+        Write-Host """$($usrAAD.username)""."
+    }
+    else {
+        Write-Host "Not found"
+    }
+
+    Write-Host "Work/school registered account`t: " -NoNewline -ForegroundColor Green
+    if ($usrWS.exist) {
+        Write-Host """$($usrWS.Upn)""."
+    }
+    else {
+        Write-Host "Not found."
+    }
+
 }
 else {
-    Write-Host "Not found."
-}
-
-Write-Host "Logged on user Azure AD identity: " -NoNewline
-if ($usrAAD.exist) {
-    Write-Host """$($usrAAD.username)""."
-}
-else {
-    Write-Host "Not found"
-}
-
-Write-Host "Work or school account: " -NoNewline
-if ($usrWS.exist) {
-    Write-Host """$($usrWS.Upn)""."
-}
-else {
-    Write-Host "Not found."
+    Write-Host "Script needs to be executed with Administrative privileges." -ForegroundColor Red
 }
 
 Write-Host "`n`n"
