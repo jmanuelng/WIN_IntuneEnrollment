@@ -471,7 +471,7 @@ if (Test-IsAdmin) {         # Part of the code require Admin privileges.
         Write-Host """$($usrAAD.username)""."
     }
     else {
-        Write-Host "Not found"
+        Write-Host "Not found."
     }
 
     Write-Host "Work/school registered account`t: " -NoNewline -ForegroundColor Green

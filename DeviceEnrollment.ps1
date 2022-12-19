@@ -59,13 +59,13 @@ Function Test-AzureAdJoin {
     $dsreg = dsregcmd.exe /status
     if (($dsreg | Select-String "AzureAdJoined :") -match "YES") {
 
-        Write-Host "Device is Azure AD Joined"
+        # Write-Host "Device is Azure AD Joined"
         Return $true
 
     }
     else {
 
-        Write-Warning "Device is not joined to Azure AD"
+        # Write-Warning "Device is not joined to Azure AD"
         Return $false
 
     }
@@ -98,9 +98,9 @@ Function Test-IntuneEnrollment {
     #Search for Intune Service
     $MDMService = Get-Service -Name IntuneManagementExtension -ErrorAction SilentlyContinue
     if ($MDMService) {
-        
-        Write-Warning "Found Intune service on device"
+
         $Result = 0
+
     }
 
     
@@ -474,7 +474,7 @@ Function Read-SettingsDat {
 
         if ((!($null -eq $datTenantId.hexValue)) -or (!($datTenantId.hexValue -eq ""))) {
             $tenantId = Convert-HexToString $($datTenantId.hexValue)
-            Write-Host "Tenand ID (WS): " $tenantId
+            Write-Host "Tenant ID (WS): " $tenantId
         }
         else {
             Return $fReturn
@@ -736,6 +736,21 @@ Write-Host "`n`n"
 #Verify admin priviliges
 Test-IsAdmin
 
+#Verify if Intune Service already exist, or URLs are already configured.
+$isIntuneEnrolled = Test-IntuneEnrollment
+if ($isIntuneEnrolled) {
+    # Intune found, nothing else to do here
+    Write-Warning "Found Intune already on device."
+    Exit
+}
+
+$isAzureAdJoin = Test-AzureAdJoin
+if (!($isAzureAdJoin)) {
+    # Has to be HAADJ or AADJ, or bye
+    Write-Warning  "Device has to be joined to Azure AD (HAADJ or AADJ)."
+}
+
+
 # Confirm if there is informaion of AzureAD that joined device to Azure AD Domain.
 $usrJoinedDevice = Confirm-WhoJoinedDevice
 
@@ -775,7 +790,7 @@ else {
 
 # Verify if device is AzureAD joined
 #       -And ($usrAAD.exist) -And ($usrJoinedDevice.exist)
-if ((Test-AzureAdJoin) -and (!(Test-IntuneEnrollment)) -and (($usrAAD.exist) -or ($usrWS.exist))) {
+if (($isAzureAdJoin) -and (!($isIntuneEnrolled)) -and (($usrAAD.exist) -or ($usrWS.exist))) {
 
     Write-Host "Device is Azure AD Join, has Azure AD account and does not have Intune service installed"
     Write-Warning  "Executing Device Enrollment"
