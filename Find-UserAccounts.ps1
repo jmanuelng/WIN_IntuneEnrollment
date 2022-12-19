@@ -273,10 +273,10 @@ Function Read-SettingsDat {
                     
                     # extract type and timestamp from old value
                     $match = $txtValue -match "(.*:)(.*)"
-                    $hexValue = $matches[2]
                     $valueType = $matches[1]
-                    $timestamp = $matches[2].Substring($matches[2].Length - 23)
-            
+                    $timeStamp = $matches[2].Substring($matches[2].Length - 23)
+                    $hexValue = $matches[2].Substring(0, $matches[2].Length - 24)
+
                     $Data = @{
                         hexValue = $hexValue
                         valueType = $valueType
@@ -388,9 +388,9 @@ Function Read-SettingsDat {
         
         $datTenantId = Read-SettingsFromFile $regFile $valueTenantId
 
-        if ((!($null -eq $datTenantId.hexValue)) -or ($datTenantId.hexValue -eq "")) {
+        if ((!($null -eq $datTenantId.hexValue)) -or (!($datTenantId.hexValue -eq ""))) {
             $tenantId = Convert-HexToString $($datTenantId.hexValue)
-            Write-Host "Tenand ID (WS): " $tenantId
+            #Write-Host "Tenand ID (WS): " $tenantId
         }
         else {
             Return $fReturn
@@ -400,6 +400,7 @@ Function Read-SettingsDat {
         # See if there Tenant is a match
         if ($tenantId -eq $dsTenantId) {
 
+            Write-Host "$tenantId and $dsTenantId"
             # Found TenantID match, get the UPN
             $datUPN = Read-SettingsFromFile $regFile $valueUpn
             $usrUpn = Convert-HexToString $($datUpn.hexValue)

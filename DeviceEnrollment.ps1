@@ -351,9 +351,9 @@ Function Read-SettingsDat {
                     
                     # extract type and timestamp from old value
                     $match = $txtValue -match "(.*:)(.*)"
-                    $hexValue = $matches[2]
                     $valueType = $matches[1]
                     $timestamp = $matches[2].Substring($matches[2].Length - 23)
+                    $hexValue = $matches[2].Substring(0, $matches[2].Length - 24)
             
                     $Data = @{
                         hexValue = $hexValue
@@ -467,7 +467,7 @@ Function Read-SettingsDat {
         
         $datTenantId = Read-SettingsFromFile $regFile $valueTenantId
 
-        if ((!($null -eq $datTenantId.hexValue)) -or ($datTenantId.hexValue -eq "")) {
+        if ((!($null -eq $datTenantId.hexValue)) -or (!($datTenantId.hexValue -eq ""))) {
             $tenantId = Convert-HexToString $($datTenantId.hexValue)
             Write-Host "Tenand ID (WS): " $tenantId
         }
