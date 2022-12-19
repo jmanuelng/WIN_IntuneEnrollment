@@ -325,6 +325,11 @@ Function Read-SettingsDat {
     $tempPath = "$localDataPath\AppData\Local\Temp"
 
     $dsTenantId = (dsregcmd /status | Select-String "TenantId :" | out-string).split(':')[1].Trim()
+    
+    # Nothing to do if there is no Tenant info
+    if (($null -eq $dsTenantId) -or ($dsTenantId -eq "")) {
+        Return $fReturn
+    }
 
 	# temporary paths
 	$regFile = "$tempPath\Settings_$((Get-Date -format yyyyMMddhhmmtt).ToString()).reg"
@@ -400,7 +405,6 @@ Function Read-SettingsDat {
         # See if there Tenant is a match
         if ($tenantId -eq $dsTenantId) {
 
-            Write-Host "$tenantId and $dsTenantId"
             # Found TenantID match, get the UPN
             $datUPN = Read-SettingsFromFile $regFile $valueUpn
             $usrUpn = Convert-HexToString $($datUpn.hexValue)
