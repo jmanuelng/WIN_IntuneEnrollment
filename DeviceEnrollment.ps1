@@ -48,7 +48,7 @@ Function Test-IsAdmin {
     else {
 
         #Has Admin rights
-        Write-Host "Administrator rights have been confirmed"
+        Write-Host "Administrator rights confirmed"
     
     }
     
@@ -307,7 +307,7 @@ Function Read-SettingsDat {
             timeStamo = $null
         }
 
-        $Result = 0
+        $result = 0
 
         if (Test-Path -Path $filePath) {
             $fileContents = Get-Content $filePath
@@ -748,6 +748,7 @@ $isAzureAdJoin = Test-AzureAdJoin
 if (!($isAzureAdJoin)) {
     # Has to be HAADJ or AADJ, or bye
     Write-Warning  "Device has to be joined to Azure AD (HAADJ or AADJ)."
+    Exit
 }
 
 
