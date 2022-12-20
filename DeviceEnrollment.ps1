@@ -82,24 +82,27 @@ Function Test-IntuneEnrollment {
 
     $Result = 1
 
-    #Look for MDMUrl
-    $mdmUrl = (dsregcmd /status | Select-String "MdmUrl :" | out-string) -Split("Url :")
-    $mdmUrl = $mdmUrl[1].Trim()
-
-    if (($null -eq $mdmUrl) -or ($mdmUrl -eq "")) {
-        Write-Host "No MDM URL found"
-        $Result = 1
-    }
-    else {
-        Write-Warning "Found MDM $mdmUrl"
-        $Result = 0
-    }
-
     #Search for Intune Service
     $MDMService = Get-Service -Name IntuneManagementExtension -ErrorAction SilentlyContinue
     if ($MDMService) {
 
         $Result = 0
+
+    }
+    else {
+
+        #Look for MDMUrl
+        $mdmUrl = (dsregcmd /status | Select-String "MdmUrl :" | out-string) -Split("Url :")
+        $mdmUrl = $mdmUrl[1].Trim()
+
+        if (($null -eq $mdmUrl) -or ($mdmUrl -eq "")) {
+            Write-Host "No MDM URL found"
+            $Result = 1
+        }
+        else {         
+            Write-Warning "Found MDM $mdmUrl"
+            $Result = 0
+        }
 
     }
 
@@ -517,9 +520,6 @@ Function Read-SettingsDat {
 }
 
 
-
-
-
 Function Invoke-AsSystem {
     <#
     .SYNOPSIS
@@ -825,7 +825,7 @@ if (($isAzureAdJoin) -and (!($isIntuneEnrolled)) -and (($usrAAD.exist) -or ($usr
 
 }
 else {
-    Write-Host "Device already enrolled to Intune"
+    Write-Host "Device does not meet all requirements for Intune enrollment."
 }
 
 
