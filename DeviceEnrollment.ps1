@@ -93,7 +93,7 @@ Function Test-IntuneEnrollment {
 
         #Look for MDMUrl
         $mdmUrl = (dsregcmd /status | Select-String "MdmUrl :" | out-string) -Split("Url :")
-        $mdmUrl = $mdmUrl[1].Trim()
+        $mdmUrl = "$mdmUrl[1]".Trim()
 
         if (($null -eq $mdmUrl) -or ($mdmUrl -eq "")) {
             Write-Host "No MDM URL found"
